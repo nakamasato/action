@@ -46,41 +46,35 @@ async function main() {
     ];
     const token = core.getInput('token');
     const pr = github.context.payload.pull_request;
-    const push = !!token && !!pr;
 
     const cachePaths = [path.join(os.homedir(), '.cache', 'pre-commit')];
     const py = getPythonVersion();
     const cacheKey = `pre-commit-2-${hashString(py)}-${hashFile('.pre-commit-config.yaml')}`;
     const restored = await cache.restoreCache(cachePaths, cacheKey);
-    const ret = await exec.exec('pre-commit', args, {ignoreReturnCode: push});
     if (!restored) {
         await cache.saveCache(cachePaths, cacheKey);
     }
 
-    if (ret && push) {
-        // actions do not run on pushes made by actions.
-        // need to make absolute sure things are good before pushing
-        // TODO: is there a better way around this limitation?
-        await exec.exec('pre-commit', args);
 
-        const diff = await exec.exec(
-            'git', ['diff', '--quiet'], {ignoreReturnCode: true}
-        );
-        if (diff) {
-            await core.group('push fixes', async () => {
-                await exec.exec('git', ['config', 'user.name', 'pre-commit']);
-                await exec.exec(
-                    'git', ['config', 'user.email', 'pre-commit@example.com']
-                );
+    await exec.exec('pre-commit', args);
 
-                const branch = pr.head.ref;
-                await exec.exec('git', ['checkout', 'HEAD', '-b', branch]);
+    const diff = await exec.exec(
+        'git', ['diff', '--quiet'], {ignoreReturnCode: true}
+    );
+    if (diff) {
+        await core.group('push fixes', async () => {
+            await exec.exec('git', ['config', 'user.name', 'pre-commit']);
+            await exec.exec(
+                'git', ['config', 'user.email', 'pre-commit@example.com']
+            );
 
-                await exec.exec('git', ['commit', '-am', 'pre-commit fixes']);
-                const url = addToken(pr.head.repo.clone_url, token);
-                await exec.exec('git', ['push', url, 'HEAD']);
-            });
-        }
+            const branch = pr.head.ref;
+            await exec.exec('git', ['checkout', 'HEAD', '-b', branch]);
+
+            await exec.exec('git', ['commit', '-am', 'pre-commit fixes']);
+            const url = addToken(pr.head.repo.clone_url, token);
+            await exec.exec('git', ['push', url, 'HEAD']);
+        });
     }
 }
 
